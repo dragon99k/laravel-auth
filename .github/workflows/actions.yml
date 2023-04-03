@@ -1,0 +1,37 @@
+name: CheckAndTest
+on: [pull_request]
+jobs:
+  check-and-test:
+    runs-on: ubuntu-20.04
+
+    env:
+      MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+      MYSQL_USER: ${{ secrets.MYSQL_USER }}
+      MYSQL_DATABASE: shinobiz_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Backend
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+      - id: cache
+        uses: actions/cache@v1
+        with:
+          path: ./vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: composer install -n --prefer-dist
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - name: Check Backend Code
+        run: bash -c "
+          ./vendor/bin/php-cs-fixer fix --path-mode=intersection -vv --diff --dry-run . &&
+          ./vendor/bin/phpcs --report=full --standard=phpcs.xml --extensions=php . &&
+          ./vendor/bin/phpmd . text ruleset.xml --suffixes php --exclude node_modules,resources,storage,vendor"
+      # - name: Test Backend
+      #   run: php artisan migrate --env=testing && php artisan test
